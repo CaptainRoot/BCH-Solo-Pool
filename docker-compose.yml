@@ -1,0 +1,86 @@
+# ============================================================
+#  BCH Solo Mining Pool – docker-compose.yml
+#  Beide Images werden lokal aus Quellcode gebaut.
+#
+#  Erster Start (Builds dauern ~10–20 Min je nach Hardware):
+#    docker compose build --no-cache
+#    docker compose up -d
+#
+#  BCHN neu bauen (z.B. nach Versionsupgrade):
+#    docker compose build --no-cache bchn
+#    docker compose up -d bchn
+#
+#  Logs:
+#    docker compose logs -f bchn
+#    docker compose logs -f bchpool
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  #  Bitcoin Cash Node (BCHN)
+  #  Aus Quellcode gebaut: gitlab.com/bitcoin-cash-node
+  #  Build-Zeit: ~15 Min (abhängig von CPU/RAM)
+  # ----------------------------------------------------------
+  bchn:
+    build:
+      context: ./bchn
+      dockerfile: Dockerfile
+      args:
+        # BCHN-Version: hier anpassen für Upgrades
+        BCHN_VERSION: "v29.0.0"
+    image: bchn-local:v29.0.0          # lokales Tag, kein Registry-Pull
+    container_name: bchn
+    restart: unless-stopped
+    volumes:
+      - ./data/bchn:/data              # Blockchain (~230 GB)
+      - ./bchn/bitcoin.conf:/data/bitcoin.conf:ro
+    ports:
+      - "8333:8333"                    # BCH P2P (optional)
+      # RPC 8332 bleibt intern – kein Expose nach außen
+    networks:
+      mining:
+        ipv4_address: 172.28.0.10
+    healthcheck:
+      test: >
+        bitcoin-cli
+        -datadir=/data
+        -rpcuser=bchuser
+        -rpcpassword=AENDERN_SICHERES_PASSWORT_HIER
+        getblockchaininfo
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 120s
+
+  # ----------------------------------------------------------
+  #  bchpool – Stratum V1 Server
+  #  ckpool-Fork für BCH: github.com/dagurval/bchpool
+  #  Verbindet Bitaxe per Stratum mit dem BCHN-Node
+  # ----------------------------------------------------------
+  bchpool:
+    build:
+      context: ./bchpool
+      dockerfile: Dockerfile
+    image: bchpool-local:latest
+    container_name: bchpool
+    restart: unless-stopped
+    depends_on:
+      bchn:
+        condition: service_healthy
+    volumes:
+      - ./bchpool/ckpool.conf:/etc/ckpool/ckpool.conf:ro
+      - ./data/bchpool-logs:/var/log/ckpool
+    ports:
+      - "3333:3333"                    # Stratum – Bitaxe verbindet sich hier
+    networks:
+      mining:
+        ipv4_address: 172.28.0.20
+    command: ["-c", "/etc/ckpool/ckpool.conf", "-B"]
+
+networks:
+  mining:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
