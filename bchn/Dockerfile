@@ -77,10 +77,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /src/build/src/bitcoind  /usr/local/bin/bitcoind
 COPY --from=builder /src/build/src/bitcoin-cli /usr/local/bin/bitcoin-cli
 
-# Dedizierter User für den Node-Prozess (kein Root)
-RUN useradd -r -m -d /data -s /bin/bash bchn
-USER bchn
-
 # Datenverzeichnis (Blockchain)
 VOLUME ["/data"]
 
