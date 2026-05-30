@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libboost-chrono-dev \
     libboost-filesystem-dev \
+    libboost-test-dev \
     libboost-thread-dev \
     libevent-dev \
     libssl-dev \
