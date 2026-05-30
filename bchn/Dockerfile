@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ninja-build \
     python3 \
     pkg-config \
+    ca-certificates \
     libboost-chrono-dev \
     libboost-filesystem-dev \
     libboost-thread-dev \

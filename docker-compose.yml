@@ -1,43 +1,41 @@
 # ============================================================
-#  BCH Solo Mining Pool – docker-compose.yml
-#  Beide Images werden lokal aus Quellcode gebaut.
+#  BCH Solo Mining Pool + Block Explorer – docker-compose.yml
+#  Alle drei Images werden lokal aus Quellcode gebaut.
 #
-#  Erster Start (Builds dauern ~10–20 Min je nach Hardware):
+#  Services:
+#    bchn      – Bitcoin Cash Full Node (BCHN v29, Port 8333/8332)
+#    bchpool   – Stratum V1 Server für Bitaxe (Port 3333)
+#    explorer  – BCH Block Explorer Web-UI (Port 3002)
+#
+#  Erster Start:
 #    docker compose build --no-cache
 #    docker compose up -d
 #
-#  BCHN neu bauen (z.B. nach Versionsupgrade):
-#    docker compose build --no-cache bchn
-#    docker compose up -d bchn
-#
-#  Logs:
-#    docker compose logs -f bchn
-#    docker compose logs -f bchpool
+#  ⚠️  WICHTIG: txindex=1 in bchn/bitcoin.conf ist Pflicht für
+#      den Explorer! Bei bereits synchronisiertem Node:
+#      docker compose exec bchn bitcoind -datadir=/data -reindex
 # ============================================================
 
 services:
 
   # ----------------------------------------------------------
-  #  Bitcoin Cash Node (BCHN)
-  #  Aus Quellcode gebaut: gitlab.com/bitcoin-cash-node
-  #  Build-Zeit: ~15 Min (abhängig von CPU/RAM)
+  #  Bitcoin Cash Node (BCHN v29.0.0)
+  #  Aus Quellcode: gitlab.com/bitcoin-cash-node
   # ----------------------------------------------------------
   bchn:
     build:
       context: ./bchn
       dockerfile: Dockerfile
       args:
-        # BCHN-Version: hier anpassen für Upgrades
         BCHN_VERSION: "v29.0.0"
-    image: bchn-local:v29.0.0          # lokales Tag, kein Registry-Pull
+    image: bchn-local:v29.0.0
     container_name: bchn
     restart: unless-stopped
     volumes:
-      - ./data/bchn:/data              # Blockchain (~230 GB)
+      - ./data/bchn:/data
       - ./bchn/bitcoin.conf:/data/bitcoin.conf:ro
     ports:
-      - "8333:8333"                    # BCH P2P (optional)
-      # RPC 8332 bleibt intern – kein Expose nach außen
+      - "8333:8333"         # BCH P2P (optional, für bessere Peer-Verbindungen)
     networks:
       mining:
         ipv4_address: 172.28.0.10
@@ -55,8 +53,7 @@ services:
 
   # ----------------------------------------------------------
   #  bchpool – Stratum V1 Server
-  #  ckpool-Fork für BCH: github.com/dagurval/bchpool
-  #  Verbindet Bitaxe per Stratum mit dem BCHN-Node
+  #  Aus Quellcode: github.com/dagurval/bchpool
   # ----------------------------------------------------------
   bchpool:
     build:
@@ -72,11 +69,36 @@ services:
       - ./bchpool/ckpool.conf:/etc/ckpool/ckpool.conf:ro
       - ./data/bchpool-logs:/var/log/ckpool
     ports:
-      - "3333:3333"                    # Stratum – Bitaxe verbindet sich hier
+      - "3333:3333"         # Stratum – Bitaxe verbindet sich hier
     networks:
       mining:
         ipv4_address: 172.28.0.20
     command: ["-c", "/etc/ckpool/ckpool.conf", "-B"]
+
+  # ----------------------------------------------------------
+  #  BCH Block Explorer (bch-rpc-explorer)
+  #  Datenbankfrei, direkt per RPC gegen BCHN
+  #  Aus Quellcode: github.com/tajorey/bch-rpc-explorer
+  #
+  #  Web-UI: http://<host-ip>:3002
+  # ----------------------------------------------------------
+  explorer:
+    build:
+      context: ./explorer
+      dockerfile: Dockerfile
+    image: bch-explorer-local:latest
+    container_name: bch-explorer
+    restart: unless-stopped
+    depends_on:
+      bchn:
+        condition: service_healthy
+    env_file:
+      - ./explorer/explorer.env
+    ports:
+      - "3002:3002"         # Web-UI
+    networks:
+      mining:
+        ipv4_address: 172.28.0.30
 
 networks:
   mining:

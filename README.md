@@ -1,7 +1,14 @@
-# BCH Solo Mining Pool – Lokale Builds
+# BCH Solo Mining Pool + Block Explorer
 
-Beide Images (BCHN + bchpool) werden vollständig aus Quellcode gebaut.
-Kein Drittanbieter-Image, keine externen Binaries.
+Drei Services, alle aus Quellcode gebaut:
+
+| Service    | Port | Beschreibung                        |
+|------------|------|-------------------------------------|
+| bchn       | 8333 | Bitcoin Cash Full Node (BCHN v29)   |
+| bchpool    | 3333 | Stratum V1 – Bitaxe verbindet hier  |
+| explorer   | 3002 | BCH Block Explorer Web-UI           |
+
+---
 
 ## Verzeichnisstruktur
 
@@ -9,14 +16,17 @@ Kein Drittanbieter-Image, keine externen Binaries.
 bch-solo-pool/
 ├── docker-compose.yml
 ├── bchn/
-│   ├── Dockerfile          ← BCHN aus GitLab-Quellcode (CMake/Ninja)
-│   └── bitcoin.conf        ← RPC-Credentials, Node-Config
+│   ├── Dockerfile          ← BCHN aus GitLab (CMake/Ninja)
+│   └── bitcoin.conf        ← txindex=1 Pflicht für Explorer!
 ├── bchpool/
-│   ├── Dockerfile          ← bchpool aus GitHub-Quellcode (autotools)
+│   ├── Dockerfile          ← bchpool aus GitHub (autotools)
 │   └── ckpool.conf         ← Stratum-Config + BCH-Adresse
+├── explorer/
+│   ├── Dockerfile          ← bch-rpc-explorer aus GitHub (Node.js)
+│   └── explorer.env        ← Explorer-Konfiguration
 └── data/
-    ├── bchn/               ← Blockchain-Daten (~230 GB, auto-erstellt)
-    └── bchpool-logs/       ← Stratum-Logs (auto-erstellt)
+    ├── bchn/               ← Blockchain-Daten (~230 GB)
+    └── bchpool-logs/       ← Stratum-Logs
 ```
 
 ---
@@ -27,25 +37,25 @@ bch-solo-pool/
 ```bash
 openssl rand -hex 32
 ```
-Diesen Wert an **drei Stellen** eintragen – müssen identisch sein:
 
-- `bchn/bitcoin.conf`    → `rpcpassword=`
-- `bchpool/ckpool.conf`  → `"pass":`
-- `docker-compose.yml`   → im healthcheck (`-rpcpassword=`)
+Dieses Passwort an VIER Stellen eintragen (müssen identisch sein):
+- `bchn/bitcoin.conf`       → `rpcpassword=`
+- `bchpool/ckpool.conf`     → `"pass":`
+- `explorer/explorer.env`   → `BTCEXP_BITCOIND_PASS=`
+- `docker-compose.yml`      → im healthcheck (`-rpcpassword=`)
 
 ### BCH-Wallet-Adresse eintragen
 In `bchpool/ckpool.conf`:
 ```json
 "btcaddress" : "DEINE_BCH_ADRESSE_HIER"
 ```
-Diese Adresse erhält den vollen Block-Reward direkt in der Coinbase-Transaktion.
 
 ---
 
-## 2. Images bauen und starten
+## 2. Erster Start
 
 ```bash
-# Beide Images aus Quellcode bauen (~10–20 Min je nach CPU)
+# Alle drei Images aus Quellcode bauen (~15–25 Min)
 docker compose build --no-cache
 
 # Stack starten
@@ -55,8 +65,8 @@ docker compose up -d
 docker compose logs -f bchn
 ```
 
-Der Healthcheck auf `bchn` verzögert den Start von `bchpool` automatisch.
-`bchpool` startet erst wenn `bitcoin-cli getblockchaininfo` erfolgreich antwortet.
+Explorer und bchpool starten automatisch sobald der Node
+den Healthcheck besteht.
 
 ---
 
@@ -64,59 +74,70 @@ Der Healthcheck auf `bchn` verzögert den Start von `bchpool` automatisch.
 
 Im Bitaxe-Webinterface (http://<bitaxe-ip>):
 
-| Feld        | Wert                            |
-|-------------|----------------------------------|
-| Pool Host   | IP deines Docker-Hosts           |
-| Pool Port   | 3333                             |
-| Username    | deine BCH-Adresse                |
-| Password    | x                                |
+| Feld      | Wert                         |
+|-----------|------------------------------|
+| Pool Host | IP deines Docker-Hosts       |
+| Pool Port | 3333                         |
+| Username  | deine BCH-Adresse            |
+| Password  | x                            |
 
-Nur die rohe IP ins Host-Feld – kein stratum+tcp:// Präfix!
+Nur die rohe IP – kein stratum+tcp:// Präfix!
 
 ---
 
-## 4. Betrieb überwachen
+## 4. Explorer aufrufen
+
+```
+http://<IP-deines-Docker-Hosts>:3002
+```
+
+Funktionen: Blocks, Transaktionen, Adressen, Mempool,
+Node-Info (Peers, Sync-Status, Chaininfo).
+
+---
+
+## 5. txindex nachträglich aktivieren
+
+Falls der Node bereits ohne txindex läuft:
 
 ```bash
-# Stratum-Verbindungen und Shares
+# 1. bitcoin.conf ist bereits auf txindex=1 gesetzt
+# 2. Reindex starten (node kurz stoppen)
+docker compose stop bchn
+docker compose run --rm bchn bitcoind -datadir=/data -reindex &
+# Warten bis abgeschlossen (Logs beobachten)
+docker compose logs -f bchn
+# Dann normal neu starten
+docker compose up -d bchn
+```
+
+⚠️ Reindex dauert mehrere Stunden!
+
+---
+
+## 6. Überwachung
+
+```bash
+# Stratum-Aktivität (Shares, verbundene Miner)
 docker compose logs -f bchpool
 
-# BCH Node: Sync-Status
+# Node-Status
 docker compose exec bchn bitcoin-cli -datadir=/data getblockchaininfo
 
-# Aktueller Block
-docker compose exec bchn bitcoin-cli -datadir=/data getblockcount
+# Explorer-Logs
+docker compose logs -f explorer
 
-# Block gefunden? Suche in Logs:
+# Block gefunden?
 docker compose logs bchpool | grep -i "BLOCK"
 ```
 
 ---
 
-## 5. BCHN-Version upgraden
+## 7. Einzelne Images upgraden
 
-In docker-compose.yml unter `args`:
-```yaml
-BCHN_VERSION: "v29.1.0"
-```
-Dann:
 ```bash
+# BCHN-Version in docker-compose.yml anpassen:
+#   BCHN_VERSION: "v29.1.0"
 docker compose build --no-cache bchn
 docker compose up -d bchn
 ```
-
----
-
-## Ports
-
-| Port | Dienst   | Beschreibung                          |
-|------|----------|---------------------------------------|
-| 3333 | Stratum  | Bitaxe verbindet sich hier            |
-| 8333 | BCH P2P  | BCH-Netzwerk (eingehende Peers)       |
-| 8332 | RPC      | Intern only – nicht nach außen!       |
-
-## Sicherheitshinweise
-
-- RPC-Port 8332 ist nicht nach außen exponiert (nur Docker-intern).
-- BCHN läuft als dedizierter Non-Root User im Container.
-- Das RPC-Passwort niemals in git committen.
