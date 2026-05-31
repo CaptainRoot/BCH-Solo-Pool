@@ -4,14 +4,16 @@
 #  Baut aus Quellcode, kein Drittanbieter-Image
 # ============================================================
 
-FROM debian:bookworm-slim AS builder
+FROM debian:bullseye-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
+    ca-certificates \
     yasm \
     autoconf \
     automake \
+    libtool \
     libjansson-dev \
     libcurl4-openssl-dev \
     libssl-dev \
