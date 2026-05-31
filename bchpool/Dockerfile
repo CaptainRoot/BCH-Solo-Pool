@@ -23,7 +23,7 @@ WORKDIR /build
 RUN git clone --depth=1 https://github.com/dagurval/bchpool.git .
 
 RUN autoreconf -fi \
-    && ./configure --without-ckdb \
+    && CFLAGS="-fcommon" ./configure --without-ckdb \
     && make -j$(nproc) \
     && strip src/ckpool
 
