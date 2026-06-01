@@ -14,7 +14,7 @@ chmod 0644 /etc/cron.d/ckstats
 cron
 
 # DB-Schema initialisieren (beim ersten Start)
-cd /app && pnpm db:migrate 2>/dev/null || true
+cd /app && pnpm migration:run 2>/dev/null || true
 
 # Next.js Server starten
 exec pnpm start
