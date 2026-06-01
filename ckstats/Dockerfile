@@ -16,16 +16,9 @@ RUN git clone --depth=1 https://github.com/mrv777/ckstats.git .
 # pnpm installieren
 RUN npm install -g pnpm
 
-# Patch: NULL-Werte in formatNumber und formatValue abfangen
-# bchpool liefert kein diff/accepted/rejected/bestshare
-RUN sed -i \
-  's/export function formatNumber(num: number | bigint | string): string {/export function formatNumber(num: number | bigint | string | null | undefined): string {\n  if (num === null || num === undefined) return "N\/A";/' \
-  utils/helpers.ts
-
-# Patch: formatValue in PoolStatsDisplay für null absichern
-RUN sed -i \
-  's/return formatNumber(value);/if (value === null || value === undefined) return "N\/A";\n      return formatNumber(value);/' \
-  components/PoolStatsDisplay.tsx
+# Patch: NULL-Werte abfangen (bchpool liefert kein diff/accepted/rejected/bestshare)
+COPY patch.js /tmp/patch.js
+RUN node /tmp/patch.js
 
 COPY .env.production .env
 
