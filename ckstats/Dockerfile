@@ -33,6 +33,9 @@ RUN npm install -g pnpm
 WORKDIR /app
 COPY --from=builder /app /app
 
+# Symlink für node, damit cron es findet
+RUN ln -s /usr/local/bin/node /usr/bin/node 2>/dev/null || true
+
 # Cron für periodische DB-Updates
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cron \
